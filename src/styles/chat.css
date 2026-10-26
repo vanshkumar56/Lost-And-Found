@@ -236,6 +236,22 @@
     transparent;
 }
 
+.no-chats a,
+.no-chats button {
+  color: var(--chat-red);
+  font: inherit;
+  font-weight: 700;
+}
+
+.no-chats button {
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--chat-border);
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+}
+
 /* =========================================================
    CONVERSATION
    ========================================================= */
@@ -710,6 +726,14 @@
   background: #fafafa;
 }
 
+.chat-item-image-placeholder {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  border-radius: 10px;
+  background: #f0f0f0;
+}
+
 .chat-item-preview > img {
   width: 58px;
   height: 58px;
@@ -828,6 +852,20 @@
     );
 
   scrollbar-width: thin;
+}
+
+.no-chat-messages {
+  margin: auto;
+  color: var(--chat-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.chat-error {
+  margin: 0;
+  padding: 8px 18px;
+  color: var(--chat-red-dark);
+  font-size: 12px;
 }
 
 /* =========================================================

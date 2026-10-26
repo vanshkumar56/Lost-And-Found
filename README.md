@@ -135,12 +135,22 @@ React state
 `sessionStorage` for multi-step report drafts
 `localStorage` for temporary profile/settings persistence
 Backend
-The application can be connected to:
-Supabase Authentication
-Supabase Database
-Supabase Storage
-Supabase Realtime
-for production functionality.
+Report submission and email/password authentication use Supabase. Search, chat, and profile preferences still contain mock/local data.
+---
+🗄️ Supabase Report Submission
+The report flow uses Supabase Auth, the `items` table, and the public `item-images` storage bucket. Before running the app against your Supabase project:
+1. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local`.
+2. Run `supabase/migrations/20261024203800_submit_lost_found_reports.sql` in the Supabase SQL Editor. It adds the report detail columns, creates owner-only storage for verification answers, configures image uploads, and adds the `create_lost_found_report` RPC.
+3. Run `supabase/migrations/20261024213000_persist_chat_messages.sql` in the SQL Editor. It creates participant-protected conversations/messages, chat RPCs, and realtime updates.
+4. Run `supabase/migrations/20261024214500_profile_activity_stats.sql` in the SQL Editor to enable the per-user reported-item count on Profile.
+5. Enable email/password sign-in in Supabase Auth. If email confirmation is enabled, confirm the signup email before logging in.
+6. Start the app from the `Lost-And-Found` project folder with `bun run dev` (or `npm run dev`) and open the localhost URL printed in the terminal. Browse listings on Home; open a listing and click **Chat with reporter** to start a saved chat.
+
+Submitting a report requires a logged-in user. Item title, category, brand, color, description, location, city, area, date, time, coordinates, and image URLs are saved in `items`; verification questions and correct answers are saved in the owner-readable `item_verification_questions` table and are not included in public listing queries.
+
+Chat messages require a logged-in user. Start a conversation from a listing; both participants see the saved message history and new messages update in realtime.
+
+The profile's **Items Reported** count is loaded from the signed-in user's reports. **Items Returned** and **Successful Matches** display as unavailable until those workflows are implemented; they are not represented as zero.
 ---
 📁 Suggested Project Structure
 ```text
@@ -217,13 +227,10 @@ in the public item description.
 Instead, these details can be used as private ownership-verification questions.
 Important
 Passwords should never be stored manually in `localStorage`, `sessionStorage`, or the browser.
-When authentication is connected to production, password management should be handled by a trusted authentication provider such as Supabase Auth.
+The login and signup forms use Supabase Auth; password management is handled by Supabase rather than application storage.
 ---
 🧪 Current Development State
-The UI currently contains example/mock data in some areas.
-For example, the search page currently uses sample lost/found listings.
-These should eventually be replaced with database queries.
-The next backend integration should connect:
+The dashboard and search page display listings loaded from Supabase. Further backend integration should connect:
 ```text
 User
   ↓

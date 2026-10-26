@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -13,8 +13,10 @@ import {
 import {
   getReportDraft,
   saveReportDraft,
+  clearReportDraft,
   type VerificationQuestion,
 } from "@/lib/report-draft";
+import { submitReport } from "@/lib/items";
 
 import "@/styles/report-questions.css";
 
@@ -255,6 +257,9 @@ export function ReportQuestionsPage() {
     );
 
   const [showThanks, setShowThanks] =
+    useState(false);
+
+  const [isSubmitting, setIsSubmitting] =
     useState(false);
 
   const [error, setError] =
@@ -649,7 +654,9 @@ export function ReportQuestionsPage() {
      SUBMIT
      ======================================================= */
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (isSubmitting) return;
+
     const valid =
       validateQuestions();
 
@@ -657,7 +664,7 @@ export function ReportQuestionsPage() {
       return;
     }
 
-    saveReportDraft({
+    const report = saveReportDraft({
       category,
 
       verificationQuestions:
@@ -666,7 +673,22 @@ export function ReportQuestionsPage() {
 
     setError("");
 
-    setShowThanks(true);
+    setIsSubmitting(true);
+
+    try {
+      await submitReport(report);
+      clearReportDraft();
+      setShowThanks(true);
+    } catch (submitError) {
+      console.error("Failed to submit lost item report.", submitError);
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Your report could not be saved. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   /* =======================================================
@@ -1147,9 +1169,14 @@ export function ReportQuestionsPage() {
 
             <AlertTriangle />
 
-            <span>
-              {error}
-            </span>
+            <div>
+              <span>{error}</span>
+              {error.toLowerCase().includes("log in") && (
+                <Link to="/" className="questions-login-link">
+                  Log in to submit your report
+                </Link>
+              )}
+            </div>
 
           </div>
 
@@ -1183,11 +1210,10 @@ export function ReportQuestionsPage() {
             onClick={
               handleSubmit
             }
+            disabled={isSubmitting}
           >
 
-            <ShieldCheck />
-
-            Submit Lost Item
+            {isSubmitting ? "Saving report..." : <><ShieldCheck /> Submit Lost Item</>}
 
           </button>
 

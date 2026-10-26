@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { supabase } from "../lib/supbase";
+import { supabase } from "@/lib/supabase";
 import "@/styles/signup.css";
 
 export function SignupPage() {
@@ -18,6 +18,8 @@ export function SignupPage() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [passwordChecks, setPasswordChecks] = useState({
     length: false,
@@ -111,48 +113,46 @@ export function SignupPage() {
     return isValid;
   };
 
-  
-const [signupMessage, setSignupMessage] = useState("");
-const [isSigningUp, setIsSigningUp] = useState(false);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setSignupMessage("");
-
-  if (!validateForm()) {
-    return;
-  }
-
-  setIsSigningUp(true);
-
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          full_name: name.trim(),
-        },
-      },
-    });
-
-    if (error) {
-      setSignupMessage(error.message);
+    if (!validateForm()) {
       return;
     }
 
-    if (data.session) {
-      await navigate({ to: "/dashboard" });
-    } else {
-      await navigate({ to: "/verify-otp" });
-    }
-  } catch {
-    setSignupMessage("Something went wrong. Please try again.");
-  } finally {
-    setIsSigningUp(false);
-  }
-};
+    setSubmitMessage("");
+    setIsSubmitting(true);
 
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: name.trim(),
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        navigate({ to: "/dashboard" });
+      } else {
+        setSubmitMessage(
+          "Account created. Check your email to confirm your address, then log in.",
+        );
+      }
+    } catch (error) {
+      setSubmitMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not create your account. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handlePasswordChange = (
     value: string
@@ -241,6 +241,11 @@ const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
             onSubmit={handleSubmit}
             noValidate
           >
+            {submitMessage && (
+              <p className="field-error" role="alert">
+                {submitMessage}
+              </p>
+            )}
 
             {/* NAME */}
             <div className="signup-input-group">
@@ -561,20 +566,13 @@ const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
               </span>
             )}
 
-            
-{signupMessage && (
-  <p role="alert" className="field-error">
-    {signupMessage}
-  </p>
-)}
-  
-
             {/* VERIFY */}
             <button
               type="submit"
               className="verify-button"
+              disabled={isSubmitting}
             >
-              <span>{isSigningUp ? "Creating account..." : "Verify"}</span>
+              <span>{isSubmitting ? "Creating account..." : "Create account"}</span>
               <span className="verify-arrow">
                 →
               </span>

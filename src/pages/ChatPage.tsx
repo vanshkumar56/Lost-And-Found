@@ -1,692 +1,457 @@
-import { useMemo, useState } from "react";
-import { BottomNav } from "@/components/BottomNav";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CheckCheck,
-  Image as ImageIcon,
   MapPin,
   MoreVertical,
-  Paperclip,
   Search,
   Send,
   ShieldCheck,
-  Smile,
 } from "lucide-react";
+import { BottomNav } from "@/components/BottomNav";
+import {
+  getChatConversations,
+  getChatMessages,
+  markChatRead,
+  OPEN_CONVERSATION_KEY,
+  sendChatMessage,
+  type ChatConversation,
+  type ChatMessage,
+} from "@/lib/chat";
+import { supabase } from "@/lib/supabase";
 import "@/styles/chat.css";
 
-type Message = {
-  id: number;
-  text: string;
-  sender: "me" | "them";
-  time: string;
-  read?: boolean;
-};
+function formatTime(value: string) {
+  const date = new Date(value);
+  const today = new Date();
 
-type Conversation = {
-  id: number;
-  name: string;
-  avatar: string;
-  itemName: string;
-  itemImage: string;
-  location: string;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  online: boolean;
-  messages: Message[];
-};
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
 
-const conversations: Conversation[] = [
-  {
-    id: 1,
-    name: "Rahul Sharma",
-    avatar: "https://i.pravatar.cc/150?img=12",
-    itemName: "Black Leather Backpack",
-    itemImage:
-      "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=300&q=80",
-    location: "Central Park",
-    lastMessage: "I think this might be my backpack.",
-    time: "10:42 AM",
-    unread: 2,
-    online: true,
-    messages: [
-      {
-        id: 1,
-        text: "Hi, I saw your post about the black leather backpack.",
-        sender: "them",
-        time: "10:35 AM",
-      },
-      {
-        id: 2,
-        text: "I think this might be my backpack.",
-        sender: "them",
-        time: "10:36 AM",
-      },
-      {
-        id: 3,
-        text: "Can you tell me where you lost it?",
-        sender: "me",
-        time: "10:40 AM",
-        read: true,
-      },
-      {
-        id: 4,
-        text: "Near the central park entrance.",
-        sender: "them",
-        time: "10:42 AM",
-      },
-    ],
-  },
-
-  {
-    id: 2,
-    name: "Aditya Singh",
-    avatar: "https://i.pravatar.cc/150?img=11",
-    itemName: "Silver Wireless Headphones",
-    itemImage:
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=300&q=80",
-    location: "Subway Line 4",
-    lastMessage: "Yes, I found them yesterday.",
-    time: "Yesterday",
-    unread: 0,
-    online: false,
-    messages: [
-      {
-        id: 1,
-        text: "Hello! Are these the headphones you found?",
-        sender: "me",
-        time: "Yesterday",
-        read: true,
-      },
-      {
-        id: 2,
-        text: "Yes, I found them yesterday.",
-        sender: "them",
-        time: "Yesterday",
-      },
-      {
-        id: 3,
-        text: "Great. I'll verify the ownership details.",
-        sender: "me",
-        time: "Yesterday",
-        read: true,
-      },
-    ],
-  },
-
-  {
-    id: 3,
-    name: "Vivek Kumar",
-    avatar: "https://i.pravatar.cc/150?img=13",
-    itemName: "Brown Leather Wallet",
-    itemImage:
-      "https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=300&q=80",
-    location: "Main City Cafe",
-    lastMessage: "Can you share more details?",
-    time: "Mon",
-    unread: 1,
-    online: true,
-    messages: [
-      {
-        id: 1,
-        text: "Hi! I think the wallet in your listing could be mine.",
-        sender: "them",
-        time: "Mon",
-      },
-      {
-        id: 2,
-        text: "Can you share more details?",
-        sender: "them",
-        time: "Mon",
-      },
-    ],
-  },
-
-  {
-    id: 4,
-    name: "Arjun Mehta",
-    avatar: "https://i.pravatar.cc/150?img=14",
-    itemName: "Set of Car Keys",
-    itemImage:
-      "https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=300&q=80",
-    location: "City Library",
-    lastMessage: "Thank you for your help!",
-    time: "Sun",
-    unread: 0,
-    online: false,
-    messages: [
-      {
-        id: 1,
-        text: "I believe these are my keys.",
-        sender: "them",
-        time: "Sun",
-      },
-      {
-        id: 2,
-        text: "I've completed the ownership verification.",
-        sender: "me",
-        time: "Sun",
-        read: true,
-      },
-      {
-        id: 3,
-        text: "Thank you for your help!",
-        sender: "them",
-        time: "Sun",
-      },
-    ],
-  },
-
-  {
-    id: 5,
-    name: "Karan Verma",
-    avatar: "https://i.pravatar.cc/150?img=15",
-    itemName: "Blue Water Bottle",
-    itemImage:
-      "https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=300&q=80",
-    location: "University Campus",
-    lastMessage: "I'll check the details.",
-    time: "Sat",
-    unread: 0,
-    online: false,
-    messages: [
-      {
-        id: 1,
-        text: "Hello, I'm interested in the water bottle listing.",
-        sender: "me",
-        time: "Sat",
-        read: true,
-      },
-      {
-        id: 2,
-        text: "I'll check the details.",
-        sender: "them",
-        time: "Sat",
-      },
-    ],
-  },
-];
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export function ChatPage() {
-  const [chatList, setChatList] =
-    useState<Conversation[]>(conversations);
-
-  const [selectedChatId, setSelectedChatId] =
-    useState<number | null>(1);
-
+  const [userId, setUserId] = useState<string | null>(null);
+  const [chatList, setChatList] = useState<ChatConversation[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-
   const [message, setMessage] = useState("");
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [mobileChatOpen, setMobileChatOpen] =
-    useState(false);
+  const loadConversations = useCallback(async () => {
+    const conversations = await getChatConversations();
+    setChatList(conversations);
+    return conversations;
+  }, []);
 
-  const selectedChat = chatList.find(
-    (chat) => chat.id === selectedChatId
-  );
+  const loadMessages = useCallback(async (conversationId: string) => {
+    const conversationMessages = await getChatMessages(conversationId);
+    setMessages(conversationMessages);
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function initialize() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const {
+          data: { session },
+          error: authError,
+        } = await supabase.auth.getSession();
+
+        if (authError) throw authError;
+
+        if (!session) {
+          if (isCurrent) {
+            setUserId(null);
+            setChatList([]);
+            setMessages([]);
+          }
+          return;
+        }
+
+        const conversations = await getChatConversations();
+        if (!isCurrent) return;
+
+        setUserId(session.user.id);
+        setChatList(conversations);
+
+        const requestedId = sessionStorage.getItem(OPEN_CONVERSATION_KEY);
+        sessionStorage.removeItem(OPEN_CONVERSATION_KEY);
+        const initialChat =
+          conversations.find((chat) => chat.conversation_id === requestedId) ?? conversations[0];
+
+        if (initialChat) {
+          setSelectedChatId(initialChat.conversation_id);
+          setMobileChatOpen(Boolean(requestedId));
+          const initialMessages = await getChatMessages(initialChat.conversation_id);
+          if (isCurrent) setMessages(initialMessages);
+          await markChatRead(initialChat.conversation_id);
+        }
+      } catch (loadError) {
+        console.error("Failed to load chats.", loadError);
+        if (isCurrent) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load chats. Please try again.",
+          );
+        }
+      } finally {
+        if (isCurrent) setIsLoading(false);
+      }
+    }
+
+    void initialize();
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedChatId || !userId) return;
+
+    let isCurrent = true;
+    const channel = supabase
+      .channel(`chat:${selectedChatId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `conversation_id=eq.${selectedChatId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as ChatMessage;
+          if (!isCurrent) return;
+
+          setMessages((current) =>
+            current.some((entry) => entry.id === newMessage.id)
+              ? current
+              : [...current, newMessage],
+          );
+
+          void loadConversations().catch((refreshError: unknown) => {
+            console.error("Failed to refresh chat list.", refreshError);
+          });
+
+          if (newMessage.sender_id !== userId) {
+            void markChatRead(selectedChatId).catch((readError: unknown) => {
+              console.error("Failed to mark chat as read.", readError);
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      isCurrent = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [loadConversations, selectedChatId, userId]);
+
+  const selectedChat = chatList.find((chat) => chat.conversation_id === selectedChatId);
 
   const filteredChats = useMemo(() => {
     const query = search.toLowerCase().trim();
-
-    if (!query) {
-      return chatList;
-    }
+    if (!query) return chatList;
 
     return chatList.filter(
       (chat) =>
-        chat.name.toLowerCase().includes(query) ||
-        chat.itemName.toLowerCase().includes(query) ||
-        chat.lastMessage.toLowerCase().includes(query)
+        chat.other_user_name.toLowerCase().includes(query) ||
+        chat.item_title.toLowerCase().includes(query) ||
+        chat.last_message.toLowerCase().includes(query),
     );
   }, [chatList, search]);
 
-  const openChat = (id: number) => {
-    setSelectedChatId(id);
+  async function openChat(chat: ChatConversation) {
+    setSelectedChatId(chat.conversation_id);
     setMobileChatOpen(true);
+    setMessages([]);
+    setError(null);
 
-    setChatList((previous) =>
-      previous.map((chat) =>
-        chat.id === id
-          ? { ...chat, unread: 0 }
-          : chat
-      )
-    );
-  };
+    try {
+      await Promise.all([loadMessages(chat.conversation_id), markChatRead(chat.conversation_id)]);
 
-  const sendMessage = () => {
-    if (!message.trim() || !selectedChat) {
-      return;
+      setChatList((current) =>
+        current.map((entry) =>
+          entry.conversation_id === chat.conversation_id ? { ...entry, unread_count: 0 } : entry,
+        ),
+      );
+    } catch (loadError) {
+      console.error("Failed to open conversation.", loadError);
+      setError(
+        loadError instanceof Error ? loadError.message : "Could not open this conversation.",
+      );
     }
+  }
 
-    const newMessage: Message = {
-      id: Date.now(),
-      text: message.trim(),
-      sender: "me",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      read: false,
-    };
+  async function handleSendMessage() {
+    const text = message.trim();
+    if (!text || !selectedChat || isSending) return;
 
-    setChatList((previous) =>
-      previous.map((chat) =>
-        chat.id === selectedChat.id
-          ? {
-              ...chat,
-              lastMessage: newMessage.text,
-              time: "Now",
-              messages: [
-                ...chat.messages,
-                newMessage,
-              ],
-            }
-          : chat
-      )
-    );
+    setIsSending(true);
+    setError(null);
 
-    setMessage("");
-  };
+    try {
+      await sendChatMessage(selectedChat.conversation_id, text);
+      setMessage("");
+      await Promise.all([loadMessages(selectedChat.conversation_id), loadConversations()]);
+    } catch (sendError) {
+      console.error("Failed to send chat message.", sendError);
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Your message could not be sent. Please try again.",
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
 
   return (
     <div className="chat-page">
-
-      {/* =================================================
-          MAIN CHAT AREA
-          ================================================= */}
-
       <main className="chat-main">
-
-        {/* =================================================
-            LEFT — CONVERSATION LIST
-            ================================================= */}
-
-        <aside
-          className={`chat-sidebar ${
-            mobileChatOpen
-              ? "mobile-hidden"
-              : ""
-          }`}
-        >
+        <aside className={`chat-sidebar ${mobileChatOpen ? "mobile-hidden" : ""}`}>
           <div className="chat-sidebar-header">
-
             <div>
-              <span className="chat-label">
-                MESSAGES
-              </span>
-
+              <span className="chat-label">MESSAGES</span>
               <h1>Chats</h1>
-
-              <p>
-                Conversations about your
-                lost & found items.
-              </p>
+              <p>Conversations about your lost & found items.</p>
             </div>
-
           </div>
 
-          {/* Search */}
           <div className="chat-search">
-
             <Search />
-
             <input
               type="text"
               placeholder="Search conversations..."
               value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
-              }
+              onChange={(event) => setSearch(event.target.value)}
             />
-
           </div>
 
-          {/* Conversation list */}
           <div className="conversation-list">
-
-            {filteredChats.length > 0 ? (
-              filteredChats.map((chat) => (
+            {isLoading ? (
+              <div className="no-chats">
+                <p>Loading conversations...</p>
+              </div>
+            ) : !userId ? (
+              <div className="no-chats">
+                <h3>Log in to use chat</h3>
+                <p>Your conversations are saved to your account.</p>
+                <Link to="/">Log in</Link>
+              </div>
+            ) : error && chatList.length === 0 ? (
+              <div className="no-chats">
+                <h3>Could not load chats</h3>
+                <p>{error}</p>
                 <button
-                  key={chat.id}
-                  className={`conversation ${
-                    selectedChatId === chat.id
-                      ? "selected"
-                      : ""
-                  }`}
+                  type="button"
                   onClick={() =>
-                    openChat(chat.id)
+                    void loadConversations()
+                      .then((items) => {
+                        setChatList(items);
+                        setError(null);
+                      })
+                      .catch((retryError: unknown) => {
+                        setError(
+                          retryError instanceof Error
+                            ? retryError.message
+                            : "Could not load chats.",
+                        );
+                      })
                   }
                 >
-                  {/* Avatar */}
-
+                  Try again
+                </button>
+              </div>
+            ) : filteredChats.length > 0 ? (
+              filteredChats.map((chat) => (
+                <button
+                  key={chat.conversation_id}
+                  className={`conversation ${
+                    selectedChatId === chat.conversation_id ? "selected" : ""
+                  }`}
+                  onClick={() => void openChat(chat)}
+                >
                   <div className="avatar-wrapper">
-
-                    <img
-                      src={chat.avatar}
-                      alt={chat.name}
-                    />
-
-                    {chat.online && (
-                      <span className="online-dot" />
-                    )}
-
+                    <img src="https://i.pravatar.cc/150?img=12" alt="" />
                   </div>
-
-                  {/* Conversation info */}
-
                   <div className="conversation-info">
-
                     <div className="conversation-top">
-
-                      <strong>
-                        {chat.name}
-                      </strong>
-
-                      <time>
-                        {chat.time}
-                      </time>
-
+                      <strong>{chat.other_user_name}</strong>
+                      <time>{formatTime(chat.last_message_at)}</time>
                     </div>
-
                     <div className="conversation-item">
-                      <span>
-                        {chat.itemName}
-                      </span>
+                      <span>{chat.item_title}</span>
                     </div>
-
                     <div className="conversation-bottom">
-
-                      <p>
-                        {chat.lastMessage}
-                      </p>
-
-                      {chat.unread > 0 && (
-                        <span className="unread-badge">
-                          {chat.unread}
-                        </span>
+                      <p>{chat.last_message || "Conversation started"}</p>
+                      {chat.unread_count > 0 && (
+                        <span className="unread-badge">{chat.unread_count}</span>
                       )}
-
                     </div>
-
                   </div>
                 </button>
               ))
             ) : (
               <div className="no-chats">
                 <Search size={30} />
-
-                <h3>
-                  No conversations
-                </h3>
-
+                <h3>{search ? "No conversations found" : "No conversations yet"}</h3>
                 <p>
-                  Try another search.
+                  {search
+                    ? "Try another search."
+                    : "Open a listing and choose Chat with reporter to start one."}
                 </p>
               </div>
             )}
-
           </div>
         </aside>
 
-        {/* =================================================
-            RIGHT — ACTIVE CHAT
-            ================================================= */}
-
-        <section
-          className={`chat-window ${
-            mobileChatOpen
-              ? "mobile-visible"
-              : ""
-          }`}
-        >
-
+        <section className={`chat-window ${mobileChatOpen ? "mobile-visible" : ""}`}>
           {selectedChat ? (
             <>
-              {/* Chat header */}
-
               <header className="chat-header">
-
                 <button
                   className="mobile-back"
-                  onClick={() =>
-                    setMobileChatOpen(false)
-                  }
+                  onClick={() => setMobileChatOpen(false)}
                   aria-label="Back to chats"
                 >
                   <ArrowLeft />
                 </button>
-
                 <div className="chat-user-avatar">
-
-                  <img
-                    src={selectedChat.avatar}
-                    alt={selectedChat.name}
-                  />
-
-                  {selectedChat.online && (
-                    <span />
-                  )}
-
+                  <img src="https://i.pravatar.cc/150?img=12" alt="" />
                 </div>
-
                 <div className="chat-user-info">
-
-                  <h2>
-                    {selectedChat.name}
-                  </h2>
-
-                  <span>
-                    {selectedChat.online
-                      ? "Online"
-                      : "Offline"}
-                  </span>
-
+                  <h2>{selectedChat.other_user_name}</h2>
+                  <span>Item conversation</span>
                 </div>
-
-                <button
-                  className="chat-more"
-                  aria-label="More options"
-                >
+                <button className="chat-more" aria-label="More options">
                   <MoreVertical />
                 </button>
-
               </header>
 
-              {/* =================================================
-                  ITEM PREVIEW
-                  ================================================= */}
-
               <div className="chat-item-preview">
-
-                <img
-                  src={selectedChat.itemImage}
-                  alt={selectedChat.itemName}
-                />
-
+                {selectedChat.item_image_url ? (
+                  <img src={selectedChat.item_image_url} alt={selectedChat.item_title} />
+                ) : (
+                  <div className="chat-item-image-placeholder" />
+                )}
                 <div className="chat-item-info">
-
-                  <span>
-                    ITEM DISCUSSION
-                  </span>
-
-                  <strong>
-                    {selectedChat.itemName}
-                  </strong>
-
+                  <span>ITEM DISCUSSION</span>
+                  <strong>{selectedChat.item_title}</strong>
                   <small>
                     <MapPin size={12} />
-                    {selectedChat.location}
+                    {selectedChat.item_location}
                   </small>
-
                 </div>
-
                 <div className="chat-item-verified">
                   <ShieldCheck size={15} />
-                  <span>
-                    Protected
-                  </span>
+                  <span>Protected</span>
                 </div>
-
               </div>
-
-              {/* =================================================
-                  MESSAGES
-                  ================================================= */}
 
               <div className="messages-area">
-
-                <div className="message-date">
-                  <span>
-                    TODAY
-                  </span>
-                </div>
-
-                {selectedChat.messages.map(
-                  (msg) => (
-                    <div
-                      key={msg.id}
-                      className={`message-row ${
-                        msg.sender === "me"
-                          ? "mine"
-                          : "theirs"
-                      }`}
-                    >
-                      <div className="message-bubble">
-
-                        <p>
-                          {msg.text}
-                        </p>
-
-                        <div className="message-time">
-
-                          <span>
-                            {msg.time}
-                          </span>
-
-                          {msg.sender === "me" && (
-                            <CheckCheck
-                              size={13}
-                              className={
-                                msg.read
-                                  ? "read"
-                                  : ""
-                              }
-                            />
-                          )}
-
+                {messages.length === 0 ? (
+                  <div className="no-chat-messages">
+                    <p>Send a message to start this conversation.</p>
+                  </div>
+                ) : (
+                  messages.map((entry) => {
+                    const mine = entry.sender_id === userId;
+                    return (
+                      <div key={entry.id} className={`message-row ${mine ? "mine" : "theirs"}`}>
+                        <div className="message-bubble">
+                          <p>{entry.body}</p>
+                          <div className="message-time">
+                            <span>{formatTime(entry.created_at)}</span>
+                            {mine && <CheckCheck size={13} />}
+                          </div>
                         </div>
-
                       </div>
-                    </div>
-                  )
+                    );
+                  })
                 )}
-
               </div>
 
-              {/* =================================================
-                  MESSAGE COMPOSER
-                  ================================================= */}
+              {error && (
+                <p className="chat-error" role="alert">
+                  {error}
+                </p>
+              )}
 
               <div className="message-composer">
-
-                <button
-                  className="composer-icon"
-                  aria-label="Attach file"
-                >
-                  <Paperclip />
-                </button>
-
-                <button
-                  className="composer-icon image-button"
-                  aria-label="Add image"
-                >
-                  <ImageIcon />
-                </button>
-
                 <div className="message-input-wrapper">
-
                   <input
                     type="text"
                     placeholder="Write a message..."
                     value={message}
-                    onChange={(e) =>
-                      setMessage(e.target.value)
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        sendMessage();
+                    maxLength={4000}
+                    onChange={(event) => setMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSendMessage();
                       }
                     }}
                   />
-
-                  <button
-                    className="emoji-button"
-                    aria-label="Emoji"
-                  >
-                    <Smile />
-                  </button>
-
                 </div>
-
                 <button
                   className="send-button"
-                  onClick={sendMessage}
-                  disabled={!message.trim()}
+                  onClick={() => void handleSendMessage()}
+                  disabled={!message.trim() || isSending}
                   aria-label="Send message"
                 >
                   <Send />
                 </button>
-
               </div>
 
               <div className="chat-safety-note">
                 <ShieldCheck size={12} />
-
-                Never share passwords, OTPs or
-                sensitive personal information.
+                Never share passwords, OTPs or sensitive personal information.
               </div>
             </>
           ) : (
             <div className="no-chat-selected">
-
               <div className="empty-chat-icon">
                 <MessageIcon />
               </div>
-
-              <h2>
-                Select a conversation
-              </h2>
-
+              <h2>{userId ? "Select a conversation" : "Your chats are private"}</h2>
               <p>
-                Choose a conversation to start
-                chatting.
+                {userId
+                  ? "Choose a conversation to start chatting."
+                  : "Log in to access conversations saved to your account."}
               </p>
-
             </div>
           )}
-
         </section>
-
       </main>
-
       <BottomNav />
-
     </div>
   );
 }
 
-/* =========================================================
-   SIMPLE MESSAGE ICON
-   ========================================================= */
-
 function MessageIcon() {
   return (
-    <svg
-      width="30"
-      height="30"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
       <path
         d="M20 11.5C20 15.6421 16.4183 19 12 19C10.6818 19 9.44509 18.6956 8.36364 18.1591L4 20L5.27273 16.2273C4.468 14.9032 4 13.3758 4 11.5C4 7.35786 7.58172 4 12 4C16.4183 4 20 7.35786 20 11.5Z"
         stroke="currentColor"

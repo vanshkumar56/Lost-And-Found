@@ -1,5 +1,5 @@
 export type LostFoundItem = {
-  id: number;
+  id: number | string;
   title: string;
   type: "Lost" | "Found";
   category: string;
@@ -9,12 +9,12 @@ export type LostFoundItem = {
   description: string;
 
   // Used for ownership verification
-  verificationQuestion: string;
-  verificationAnswer: string;
+  verificationQuestion?: string;
+  verificationAnswer?: string;
 
   // Information that should only be shown after verification
-  founderName: string;
-  founderContact: string;
+  founderName?: string;
+  founderContact?: string;
 };
 
 export const exampleItems: LostFoundItem[] = [

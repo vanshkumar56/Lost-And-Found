@@ -1,32 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supbase";
+import { useNavigate } from "@tanstack/react-router";
 import { BottomNav } from "@/components/BottomNav";
-import { exampleItems, type LostFoundItem } from "@/data/items";
+import type { LostFoundItem } from "@/data/items";
+import { OPEN_CONVERSATION_KEY, startItemConversation } from "@/lib/chat";
+import { getItems } from "@/lib/items";
 import "@/styles/dashboard.css";
 
 export function DashboardPage() {
-  const [checkingLogin, setCheckingLogin] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
-
-      if (error || !data.session) {
-        window.location.href = "/";
-      } else {
-        setCheckingLogin(false);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-   
-  const [items] = useState<LostFoundItem[]>(exampleItems);
+  const navigate = useNavigate();
+  const [items, setItems] = useState<LostFoundItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [activeType, setActiveType] =
     useState<"All" | "Lost" | "Found">("All");
@@ -41,6 +26,37 @@ export function DashboardPage() {
     useState<LostFoundItem | null>(null);
 
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadItems() {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const loadedItems = await getItems();
+        if (isCurrent) setItems(loadedItems);
+      } catch (error) {
+        console.error("Failed to load items from Supabase.", error);
+        if (isCurrent) {
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Could not load items. Please try again.",
+          );
+        }
+      } finally {
+        if (isCurrent) setIsLoading(false);
+      }
+    }
+
+    void loadItems();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [reloadKey]);
 
   const categories = [
     "All",
@@ -88,7 +104,7 @@ export function DashboardPage() {
       );
     }
 
-    if (sort === "recent") {
+    if (sort === "old") {
       result.reverse();
     }
 
@@ -288,7 +304,22 @@ export function DashboardPage() {
         </div>
 
         {/* Product grid */}
-        {filteredItems.length > 0 ? (
+        {isLoading ? (
+          <div className="empty-state">
+            <p>Loading items...</p>
+          </div>
+        ) : loadError ? (
+          <div className="empty-state">
+            <h2>Could not load items</h2>
+            <p>{loadError}</p>
+            <button
+              className="clear-filters"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
+              Try again
+            </button>
+          </div>
+        ) : filteredItems.length > 0 ? (
           <section className="items-grid">
             {filteredItems.map((item) => (
               <ItemCard
@@ -323,6 +354,11 @@ export function DashboardPage() {
           onClose={() =>
             setSelectedItem(null)
           }
+          onStartChat={async () => {
+            const conversationId = await startItemConversation(selectedItem.id);
+            sessionStorage.setItem(OPEN_CONVERSATION_KEY, conversationId);
+            await navigate({ to: "/chat" });
+          }}
         />
       )}
 
@@ -350,7 +386,7 @@ function ItemCard({
       <div className="item-image-wrapper">
 
         <img
-          src={item.image}
+          src={item.image || undefined}
           alt={item.title}
           className="item-image"
           loading="lazy"
@@ -431,9 +467,11 @@ function ItemCard({
 function ItemDetails({
   item,
   onClose,
+  onStartChat,
 }: {
   item: LostFoundItem;
   onClose: () => void;
+  onStartChat: () => Promise<void>;
 }) {
   const [showVerification, setShowVerification] =
     useState(false);
@@ -444,6 +482,15 @@ function ItemDetails({
     useState<
       "idle" | "success" | "failed"
     >("idle");
+  const [chatError, setChatError] = useState("");
+  const [isStartingChat, setIsStartingChat] = useState(false);
+
+  const canVerify = Boolean(
+    item.verificationQuestion &&
+      item.verificationAnswer &&
+      item.founderName &&
+      item.founderContact,
+  );
 
   const normalize = (value: string) => {
     return value
@@ -482,7 +529,7 @@ function ItemDetails({
   const checkAnswer = () => {
     const score = calculateSimilarity(
       answer,
-      item.verificationAnswer
+      item.verificationAnswer ?? "",
     );
 
     if (score >= 90) {
@@ -580,7 +627,33 @@ function ItemDetails({
             {item.description}
           </p>
 
-          {!showVerification &&
+          <button
+            className="contact-founder-button"
+            disabled={isStartingChat}
+            onClick={async () => {
+              setChatError("");
+              setIsStartingChat(true);
+              try {
+                await onStartChat();
+              } catch (error) {
+                console.error("Could not start item conversation.", error);
+                setChatError(
+                  error instanceof Error
+                    ? error.message
+                    : "Could not start a conversation. Please try again.",
+                );
+              } finally {
+                setIsStartingChat(false);
+              }
+            }}
+          >
+            {isStartingChat ? "Opening chat..." : "Chat with reporter"}
+            <span>→</span>
+          </button>
+
+          {chatError && <p role="alert">{chatError}</p>}
+
+          {canVerify && !showVerification &&
             verificationResult === "idle" && (
               <button
                 className="is-yours-button"
@@ -595,6 +668,7 @@ function ItemDetails({
 
           {/* Verification */}
           {showVerification &&
+            canVerify &&
             verificationResult === "idle" && (
               <div className="verification-box">
 
@@ -680,7 +754,7 @@ function ItemDetails({
                 className="contact-founder-button"
                 onClick={() => {
                   alert(
-                    `Contact ${item.founderName}: ${item.founderContact}`
+                    `Contact ${item.founderName ?? ""}: ${item.founderContact ?? ""}`
                   );
                 }}
               >
@@ -722,6 +796,12 @@ function ItemDetails({
               </button>
 
             </div>
+          )}
+
+          {!canVerify && (
+            <p>
+              Ownership verification is not available for this listing yet.
+            </p>
           )}
 
         </div>

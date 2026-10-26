@@ -96,6 +96,17 @@
   font-size: 13px;
 }
 
+.profile-auth-status {
+  margin: -12px 0 20px;
+  color: #c92f3b;
+  font-size: 12px;
+}
+
+.profile-auth-status a {
+  color: inherit;
+  font-weight: 700;
+}
+
 .header-edit-button {
   display: flex;
 
@@ -356,6 +367,13 @@
   font-size: 9px;
 
   font-weight: 700;
+}
+
+.profile-stats-note {
+  margin: 9px 2px 0;
+  color: #777c77;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 
@@ -973,6 +991,20 @@
 
 .profile-form-field input::placeholder {
   color: #aaa;
+}
+
+.profile-form-field input:read-only {
+  background: #f7f7f7;
+  color: #777c77;
+  cursor: not-allowed;
+}
+
+.profile-field-hint {
+  display: block;
+  margin-top: 6px;
+  color: #777c77;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 

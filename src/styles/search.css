@@ -830,6 +830,8 @@
 
   justify-content: space-between;
 
+  text-decoration: none;
+
   padding-top: 14px;
 
   margin-top: auto;
@@ -854,6 +856,34 @@
 .view-result span {
   transform:
     translateX(4px);
+}
+
+.search-chat-button {
+  width: 100%;
+
+  padding: 10px 12px;
+  margin-top: 12px;
+
+  border: 0;
+  border-radius: 6px;
+
+  background: #e63946;
+  color: white;
+
+  font-size: 11px;
+  font-weight: 800;
+
+  cursor: pointer;
+}
+
+.search-chat-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.search-chat-error {
+  margin-top: 8px !important;
+  color: #b42318 !important;
 }
 
 

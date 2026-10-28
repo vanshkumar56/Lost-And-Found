@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { supabase } from "@/lib/supabase";
+import { useSignUp } from "@clerk/clerk-react";
+import { setPendingEmail } from "@/lib/auth-flow";
 import "@/styles/signup.css";
 
 export function SignupPage() {
   const navigate = useNavigate();
-
+  const { signUp, setActive, isLoaded } = useSignUp();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,25 +124,24 @@ export function SignupPage() {
     setSubmitMessage("");
     setIsSubmitting(true);
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+    if (!isLoaded) return;
+
+        try {
+      const result = await signUp.create({
+        emailAddress: email.trim(),
         password,
-        options: {
-          data: {
-            full_name: name.trim(),
-          },
+        unsafeMetadata: {
+          full_name: name.trim(),
         },
       });
 
-      if (error) throw error;
-
-      if (data.session) {
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
         navigate({ to: "/dashboard" });
       } else {
-        setSubmitMessage(
-          "Account created. Check your email to confirm your address, then log in.",
-        );
+        await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+        setPendingEmail(email.trim());
+        navigate({ to: "/verify-otp" });
       }
     } catch (error) {
       setSubmitMessage(

@@ -1,10 +1,18 @@
-import { useState } from "react";
+import { useAuth, useSignIn } from "@clerk/clerk-react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { supabase } from "@/lib/supabase";
 import "@/styles/login.css";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const { isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (isSignedIn) {
+      navigate({ to: "/dashboard" });
+    }
+  }, [isSignedIn, navigate]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -12,18 +20,33 @@ export function LoginPage() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isLoaded) return;
+
     setErrorMessage("");
     setIsSubmitting(true);
 
+
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+      const result = await signIn.create({
+        identifier: email.trim(),
         password,
       });
 
-      if (error) throw error;
+      if (result.status !== "complete") {
+        throw new Error("Additional verification is required for this account.");
+      }
+
+      await setActive({ session: result.createdSessionId });
       navigate({ to: "/dashboard" });
-    } catch (error) {
+    }  catch (error) {
+      const code = (error as { errors?: { code?: string }[] })?.errors?.[0]?.code;
+
+      if (code === "session_exists") {
+        navigate({ to: "/dashboard" });
+        return;
+      }
+
       setErrorMessage(
         error instanceof Error
           ? error.message

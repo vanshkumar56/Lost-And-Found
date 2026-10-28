@@ -1,83 +1,60 @@
-
-import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { supabase } from "../lib/supbase";
+import { useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useSignIn } from "@clerk/clerk-react";
+import { clearPendingEmail, getPendingEmail } from "@/lib/auth-flow";
 import "@/styles/forgot-password.css";
 
 export function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [checking, setChecking] = useState(true);
-  const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    async function checkSession() {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (!active) return;
-
-      if (error || !data.session) {
-        setMessage("Please open this page using the reset link sent to your email.");
-      } else {
-        setSessionReady(true);
-      }
-
-      setChecking(false);
-    }
-
-    checkSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!active) return;
-
-        if (event === "PASSWORD_RECOVERY" && session) {
-          setSessionReady(true);
-          setMessage("");
-          setChecking(false);
-        }
-      }
-    );
-
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  const email = getPendingEmail();
 
   async function handleUpdatePassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setMessage("");
 
-    if (password.length < 6) {
-      setMessage("Password must be at least 6 characters long.");
+    if (!email) {
+      setMessage("Start again from Forgot Password to get a reset code.");
       return;
     }
-
+    if (code.trim().length !== 6) {
+      setMessage("Enter the 6-digit code sent to your email.");
+      return;
+    }
+    if (password.length < 8) {
+      setMessage("Password must be at least 8 characters long.");
+      return;
+    }
     if (password !== confirmPassword) {
       setMessage("Passwords do not match.");
       return;
     }
+    if (!isLoaded) return;
 
     setLoading(true);
-
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const result = await signIn.attemptFirstFactor({
+        strategy: "reset_password_email_code",
+        code: code.trim(),
+        password,
+      });
 
-      if (error) {
-        setMessage(error.message);
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        clearPendingEmail();
+        navigate({ to: "/dashboard" });
       } else {
-        setMessage("Password updated successfully! You can now log in.");
-        setPassword("");
-        setConfirmPassword("");
-        setSessionReady(false);
+        setMessage("Password reset is not complete. Please try again.");
       }
-    } catch {
-      setMessage("Something went wrong. Please try again.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not reset the password. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -107,65 +84,70 @@ export function ResetPasswordPage() {
 
           <div className="forgot-header">
             <h1>Set a New Password</h1>
-            <p>Choose a strong new password to get back into your account.</p>
+            <p>Enter the 6-digit code we sent to {email || "your email"}, then choose a new password.</p>
           </div>
 
-          {checking ? (
-            <p>Checking your reset link...</p>
-          ) : sessionReady ? (
-            <form onSubmit={handleUpdatePassword}>
-              <div className="forgot-input-group">
-                <label htmlFor="new-password">New password</label>
-                <div className="forgot-input-wrapper">
-                  <input
-                    id="new-password"
-                    type="password"
-                    placeholder="Enter new password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    minLength={6}
-                    autoComplete="new-password"
-                    required
-                  />
-                </div>
+          <form onSubmit={handleUpdatePassword}>
+            <div className="forgot-input-group">
+              <label htmlFor="reset-code">Verification code</label>
+              <div className="forgot-input-wrapper">
+                <input
+                  id="reset-code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  autoComplete="one-time-code"
+                  required
+                />
               </div>
+            </div>
 
-              <div className="forgot-input-group">
-                <label htmlFor="confirm-password">Confirm new password</label>
-                <div className="forgot-input-wrapper">
-                  <input
-                    id="confirm-password"
-                    type="password"
-                    placeholder="Re-enter new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    minLength={6}
-                    autoComplete="new-password"
-                    required
-                  />
-                </div>
+            <div className="forgot-input-group">
+              <label htmlFor="new-password">New password</label>
+              <div className="forgot-input-wrapper">
+                <input
+                  id="new-password"
+                  type="password"
+                  placeholder="Enter new password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={8}
+                  autoComplete="new-password"
+                  required
+                />
               </div>
+            </div>
 
-              {message && <p role="status">{message}</p>}
+            <div className="forgot-input-group">
+              <label htmlFor="confirm-password">Confirm new password</label>
+              <div className="forgot-input-wrapper">
+                <input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="Re-enter new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+            </div>
 
-              <button
-                type="submit"
-                className="reset-password-button"
-                disabled={loading}
-              >
-                <span>{loading ? "Updating..." : "Update password"}</span>
-                <span className="reset-arrow">→</span>
-              </button>
-            </form>
-          ) : (
-            <p role="status">{message}</p>
-          )}
+            {message && <p role="status">{message}</p>}
 
-          {!sessionReady && !checking && message.includes("successfully") ? null : (
-            <Link to="/" className="back-link">
-              <span>←</span> Back to login
-            </Link>
-          )}
+            <button type="submit" className="reset-password-button" disabled={loading}>
+              <span>{loading ? "Updating..." : "Update password"}</span>
+              <span className="reset-arrow">→</span>
+            </button>
+          </form>
+
+          <Link to="/" className="back-link">
+            <span>←</span> Back to login
+          </Link>
 
           <div className="forgot-security">
             <span>Your information is securely protected</span>
@@ -173,9 +155,7 @@ export function ResetPasswordPage() {
         </section>
       </main>
 
-      <footer className="forgot-footer">
-        © {new Date().getFullYear()} Lost &amp; Found
-      </footer>
+      <footer className="forgot-footer">© {new Date().getFullYear()} Lost &amp; Found</footer>
     </div>
   );
 }

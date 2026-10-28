@@ -135,22 +135,43 @@ React state
 `sessionStorage` for multi-step report drafts
 `localStorage` for temporary profile/settings persistence
 Backend
-Report submission and email/password authentication use Supabase. Search, chat, and profile preferences still contain mock/local data.
+Supabase handles authentication, listings, reports, image storage, and realtime chat. Profile notification preferences are still stored in `localStorage`.
 ---
-🗄️ Supabase Report Submission
-The report flow uses Supabase Auth, the `items` table, and the public `item-images` storage bucket. Before running the app against your Supabase project:
-1. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local`.
-2. Run `supabase/migrations/20261024203800_submit_lost_found_reports.sql` in the Supabase SQL Editor. It adds the report detail columns, creates owner-only storage for verification answers, configures image uploads, and adds the `create_lost_found_report` RPC.
-3. Run `supabase/migrations/20261024213000_persist_chat_messages.sql` in the SQL Editor. It creates participant-protected conversations/messages, chat RPCs, and realtime updates.
-4. Run `supabase/migrations/20261024214500_profile_activity_stats.sql` in the SQL Editor to enable the per-user reported-item count on Profile.
-5. Enable email/password sign-in in Supabase Auth. If email confirmation is enabled, confirm the signup email before logging in.
-6. Start the app from the `Lost-And-Found` project folder with `bun run dev` (or `npm run dev`) and open the localhost URL printed in the terminal. Browse listings on Home; open a listing and click **Chat with reporter** to start a saved chat.
+🗄️ Supabase Setup (required)
+The whole app runs on one Supabase project: Auth, the `items`, `item_verification_questions`, `chat_*` tables, the `item-images` storage bucket, and the RPC functions used by the frontend.
 
-Submitting a report requires a logged-in user. Item title, category, brand, color, description, location, city, area, date, time, coordinates, and image URLs are saved in `items`; verification questions and correct answers are saved in the owner-readable `item_verification_questions` table and are not included in public listing queries.
+1. Create `.env.local` in the project root (copy `.env.example`):
+   ```text
+   VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key
+   ```
+2. In the Supabase SQL Editor, run these migrations in order:
+   - `supabase/migrations/20261024203800_submit_lost_found_reports.sql`
+   - `supabase/migrations/20261024213000_persist_chat_messages.sql`
+   - `supabase/migrations/20261024214500_profile_activity_stats.sql`
+3. Auth settings (Authentication → Sign In / Providers → Email):
+   - Enable email/password sign-in.
+   - Signup uses a 6-digit code. In Authentication → Email Templates → **Confirm signup**, make sure the body includes `{{ .Token }}` so the code is emailed (the app verifies it on `/verify-otp`).
+   - Authentication → URL Configuration → add `http://localhost:3000/reset-password` (or your dev URL + `/reset-password`) to **Redirect URLs** so password-reset links work.
+4. Install and run:
+   ```bash
+   npm install
+   npm run dev
+   ```
+   Open the localhost URL printed in the terminal.
 
-Chat messages require a logged-in user. Start a conversation from a listing; both participants see the saved message history and new messages update in realtime.
+What works end to end:
+- **Auth:** signup → OTP verification → login, forgot password → reset email → new password, logout.
+- **Report an item:** the logged-in user fills the report steps; images go to `item-images`, the item and its private verification questions are saved through `create_lost_found_report`.
+- **Dashboard & Search:** listings are loaded from `items` (public columns only). Verification answers are never sent to the browser.
+- **Chat:** open a listing and click **Chat with reporter** to start a saved conversation; messages are stored and update in realtime.
+- **Profile:** the Items Reported count is loaded from the signed-in user's reports. Items Returned and Successful Matches show as unavailable until those workflows exist.
 
-The profile's **Items Reported** count is loaded from the signed-in user's reports. **Items Returned** and **Successful Matches** display as unavailable until those workflows are implemented; they are not represented as zero.
+Production build check:
+```bash
+npm run build
+```
+
 ---
 📁 Suggested Project Structure
 ```text

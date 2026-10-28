@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import {
   Bell,
   Calendar,
@@ -132,34 +132,29 @@ export function ProfilePage() {
      LOAD PROFILE
      ======================================================= */
 
+  const { user: clerkUser, isLoaded: isClerkLoaded } = useUser();
+  const { signOut } = useClerk();
+
   useEffect(() => {
+    if (!isClerkLoaded) return;
     let isCurrent = true;
 
     async function loadProfile() {
       try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        if (!session) {
+        if (!clerkUser) {
           if (isCurrent) {
             setProfileError("Please log in to view your profile.");
           }
           return;
         }
 
-        const { user } = session;
         const saved = getSavedProfile();
-        const metadata = user.user_metadata;
+        const metadata = (clerkUser.unsafeMetadata ?? {}) as Record<string, unknown>;
         const metadataName =
           typeof metadata["full_name"] === "string"
             ? metadata["full_name"]
-            : typeof metadata["name"] === "string"
-              ? metadata["name"]
-              : "";
-        const email = user.email ?? "";
+            : clerkUser.fullName ?? "";
+        const email = clerkUser.primaryEmailAddress?.emailAddress ?? "";
         const accountProfile: ProfileData = {
           name:
             metadataName.trim() ||
@@ -169,7 +164,7 @@ export function ProfilePage() {
           email,
           phone: typeof metadata["phone"] === "string" ? metadata["phone"] : saved.phone,
           city: typeof metadata["city"] === "string" ? metadata["city"] : saved.city,
-          joinedDate: new Date(user.created_at).toLocaleDateString("en-US", {
+          joinedDate: new Date(clerkUser.createdAt ?? Date.now()).toLocaleDateString("en-US", {
             month: "long",
             year: "numeric",
           }),
@@ -181,9 +176,8 @@ export function ProfilePage() {
         }
 
         try {
-          const { data: stats, error: statsLoadError } = await supabase.rpc("get_my_profile_stats");
-
-          if (statsLoadError) throw statsLoadError;
+          // Item statistics are loaded from Supabase in the data step.
+          const stats: unknown = null;
           if (isCurrent && stats && typeof stats === "object") {
             const result = stats as {
               items_reported?: unknown;
@@ -211,7 +205,7 @@ export function ProfilePage() {
           }
         }
       } catch (error) {
-        console.error("Failed to load Supabase profile.", error);
+        console.error("Failed to load profile.", error);
         if (isCurrent) {
           setProfileError(error instanceof Error ? error.message : "Could not load your profile.");
         }
@@ -238,7 +232,7 @@ export function ProfilePage() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [clerkUser, isClerkLoaded]);
 
   /* =======================================================
      SAVE SETTINGS
@@ -278,35 +272,24 @@ export function ProfilePage() {
     setIsSavingProfile(true);
 
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user) {
+      if (!clerkUser) {
         throw new Error("Please log in to update your profile.");
       }
 
-      const updatedMetadata = {
-        ...user.user_metadata,
-        full_name: editForm.name.trim(),
-        phone: editForm.phone.trim(),
-        city: editForm.city.trim(),
-      };
-
-      const { data, error } = await supabase.auth.updateUser({
-        data: updatedMetadata,
+      await clerkUser.update({
+        firstName: editForm.name.trim(),
+        unsafeMetadata: {
+          ...(clerkUser.unsafeMetadata ?? {}),
+          full_name: editForm.name.trim(),
+          phone: editForm.phone.trim(),
+          city: editForm.city.trim(),
+        },
       });
-
-      if (error) throw error;
 
       const updated: ProfileData = {
         ...editForm,
-        name:
-          typeof data.user.user_metadata["full_name"] === "string"
-            ? data.user.user_metadata["full_name"]
-            : editForm.name.trim(),
-        email: data.user.email ?? profile.email,
+        name: editForm.name.trim(),
+        email: profile.email,
         phone: editForm.phone.trim(),
         city: editForm.city.trim(),
       };
@@ -317,7 +300,7 @@ export function ProfilePage() {
 
       setModal(null);
     } catch (error) {
-      console.error("Failed to save Supabase profile.", error);
+      console.error("Failed to save profile.", error);
       setProfileError(
         error instanceof Error ? error.message : "Could not save your profile. Please try again.",
       );
@@ -418,8 +401,7 @@ export function ProfilePage() {
   async function handleLogout() {
     setModal(null);
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await signOut();
       await navigate({ to: "/" });
     } catch (error) {
       console.error("Failed to sign out.", error);

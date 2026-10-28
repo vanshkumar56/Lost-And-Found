@@ -1,4 +1,3 @@
-
 import { supabase } from "./supabase";
 import type { LostFoundItem } from "@/data/items";
 import type { ReportDraft } from "./report-draft";
@@ -10,14 +9,14 @@ type SupabaseItemRow = {
   description: string;
   category: string;
   location: string;
-  image_url: string | null;
+  image_urls: string[] | null;
   created_at: string;
 };
 
 export async function getItems(): Promise<LostFoundItem[]> {
   const { data, error } = await supabase
     .from("items")
-    .select("id, title, type, description, category, location, image_url, created_at")
+    .select("id, title, type, description, category, location, image_urls, created_at")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -41,7 +40,7 @@ export async function getItems(): Promise<LostFoundItem[]> {
           year: "numeric",
         })
         .toUpperCase(),
-      image: row.image_url ?? "",
+      image: row.image_urls?.[0] ?? "",
     };
   });
 }

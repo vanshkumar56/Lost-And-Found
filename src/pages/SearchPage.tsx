@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useAuth } from "@clerk/clerk-react";
 import {
   CalendarDays,
   ChevronDown,
@@ -22,6 +23,7 @@ import "@/styles/search.css";
 
 export function SearchPage() {
   const navigate = useNavigate();
+  const { getToken } = useAuth();
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function SearchPage() {
         const listings = await getItems();
         if (isCurrent) setItems(listings);
       } catch (error) {
-        console.error("Failed to load search listings from Supabase.", error);
+        console.error("Failed to load search listings.", error);
         if (isCurrent) {
           setLoadError(
             error instanceof Error ? error.message : "Could not load listings. Please try again.",
@@ -154,7 +156,11 @@ export function SearchPage() {
     setChatError(null);
 
     try {
-      const conversationId = await startItemConversation(item.id);
+      const token = await getToken();
+      if (!token) {
+        throw new Error("Please log in to start a chat.");
+      }
+      const conversationId = await startItemConversation(item.id, token);
       sessionStorage.setItem(OPEN_CONVERSATION_KEY, conversationId);
       await navigate({ to: "/chat" });
     } catch (error) {

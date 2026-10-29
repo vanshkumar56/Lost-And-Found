@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useAuth } from "@clerk/clerk-react";
 import { BottomNav } from "@/components/BottomNav";
 import type { LostFoundItem } from "@/data/items";
 import { OPEN_CONVERSATION_KEY, startItemConversation } from "@/lib/chat";
@@ -8,6 +9,7 @@ import "@/styles/dashboard.css";
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { getToken } = useAuth();
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function DashboardPage() {
         const loadedItems = await getItems();
         if (isCurrent) setItems(loadedItems);
       } catch (error) {
-        console.error("Failed to load items from Supabase.", error);
+        console.error("Failed to load items.", error);
         if (isCurrent) {
           setLoadError(
             error instanceof Error
@@ -355,7 +357,14 @@ export function DashboardPage() {
             setSelectedItem(null)
           }
           onStartChat={async () => {
-            const conversationId = await startItemConversation(selectedItem.id);
+            const token = await getToken();
+            if (!token) {
+              throw new Error("Please log in to start a chat.");
+            }
+            const conversationId = await startItemConversation(
+              selectedItem.id,
+              token,
+            );
             sessionStorage.setItem(OPEN_CONVERSATION_KEY, conversationId);
             await navigate({ to: "/chat" });
           }}

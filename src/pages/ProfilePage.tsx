@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useClerk, useUser } from "@clerk/clerk-react";
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import {
   Bell,
   Calendar,
@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/BottomNav";
+import { apiFetch } from "@/lib/api";
 import "@/styles/profile.css";
 
 /* =========================================================
@@ -41,6 +42,14 @@ type ProfileStats = {
   itemsReported: number | null;
   itemsReturned: number | null;
   successfulMatches: number | null;
+};
+
+type StatsResponse = {
+  stats: {
+    items_reported: number | null;
+    items_returned: number | null;
+    successful_matches: number | null;
+  };
 };
 
 /* =========================================================
@@ -134,6 +143,7 @@ export function ProfilePage() {
 
   const { user: clerkUser, isLoaded: isClerkLoaded } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
 
   useEffect(() => {
     if (!isClerkLoaded) return;
@@ -176,22 +186,24 @@ export function ProfilePage() {
         }
 
         try {
-          // Item statistics are loaded from Supabase in the data step.
-          const stats: unknown = null;
-          if (isCurrent && stats && typeof stats === "object") {
-            const result = stats as {
-              items_reported?: unknown;
-              items_returned?: unknown;
-              successful_matches?: unknown;
-            };
+          // Profile row banaye/update karein (chat list mein naam isi se aata hai)
+          const token = await getToken();
+          if (!token) {
+            throw new Error("Please log in to view your profile.");
+          }
 
+          await apiFetch("/api/profile/sync", token, {
+            method: "POST",
+            body: JSON.stringify({ fullName: accountProfile.name }),
+          });
+
+          const result = await apiFetch<StatsResponse>("/api/profile/stats", token);
+
+          if (isCurrent) {
             setProfileStats({
-              itemsReported:
-                typeof result.items_reported === "number" ? result.items_reported : null,
-              itemsReturned:
-                typeof result.items_returned === "number" ? result.items_returned : null,
-              successfulMatches:
-                typeof result.successful_matches === "number" ? result.successful_matches : null,
+              itemsReported: result.stats.items_reported ?? null,
+              itemsReturned: result.stats.items_returned ?? null,
+              successfulMatches: result.stats.successful_matches ?? null,
             });
           }
         } catch (statsLoadError) {
@@ -232,7 +244,7 @@ export function ProfilePage() {
     return () => {
       isCurrent = false;
     };
-  }, [clerkUser, isClerkLoaded]);
+  }, [clerkUser, isClerkLoaded, getToken]);
 
   /* =======================================================
      SAVE SETTINGS
@@ -285,6 +297,14 @@ export function ProfilePage() {
           city: editForm.city.trim(),
         },
       });
+
+      const token = await getToken();
+      if (token) {
+        await apiFetch("/api/profile/sync", token, {
+          method: "POST",
+          body: JSON.stringify({ fullName: editForm.name.trim() }),
+        });
+      }
 
       const updated: ProfileData = {
         ...editForm,

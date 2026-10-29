@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import {
   ArrowLeft,
   CheckCheck,
@@ -19,8 +20,9 @@ import {
   type ChatConversation,
   type ChatMessage,
 } from "@/lib/chat";
-import { supabase } from "@/lib/supabase";
 import "@/styles/chat.css";
+
+const POLL_INTERVAL_MS = 4000;
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -40,7 +42,10 @@ function formatTime(value: string) {
 }
 
 export function ChatPage() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const { getToken, isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
+  const userId = isSignedIn ? (user?.id ?? null) : null;
+
   const [chatList, setChatList] = useState<ChatConversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -51,18 +56,31 @@ export function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const requireToken = useCallback(async () => {
+    const token = await getToken();
+    if (!token) throw new Error("Please log in to use chat.");
+    return token;
+  }, [getToken]);
+
   const loadConversations = useCallback(async () => {
-    const conversations = await getChatConversations();
+    const token = await requireToken();
+    const conversations = await getChatConversations(token);
     setChatList(conversations);
     return conversations;
-  }, []);
+  }, [requireToken]);
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    const conversationMessages = await getChatMessages(conversationId);
-    setMessages(conversationMessages);
-  }, []);
+  const loadMessages = useCallback(
+    async (conversationId: string) => {
+      const token = await requireToken();
+      const conversationMessages = await getChatMessages(conversationId, token);
+      setMessages(conversationMessages);
+    },
+    [requireToken],
+  );
 
+  // Initial load
   useEffect(() => {
+    if (!isLoaded) return;
     let isCurrent = true;
 
     async function initialize() {
@@ -70,26 +88,18 @@ export function ChatPage() {
       setError(null);
 
       try {
-        const {
-          data: { session },
-          error: authError,
-        } = await supabase.auth.getSession();
-
-        if (authError) throw authError;
-
-        if (!session) {
+        if (!isSignedIn) {
           if (isCurrent) {
-            setUserId(null);
             setChatList([]);
             setMessages([]);
           }
           return;
         }
 
-        const conversations = await getChatConversations();
+        const token = await requireToken();
+        const conversations = await getChatConversations(token);
         if (!isCurrent) return;
 
-        setUserId(session.user.id);
         setChatList(conversations);
 
         const requestedId = sessionStorage.getItem(OPEN_CONVERSATION_KEY);
@@ -100,9 +110,9 @@ export function ChatPage() {
         if (initialChat) {
           setSelectedChatId(initialChat.conversation_id);
           setMobileChatOpen(Boolean(requestedId));
-          const initialMessages = await getChatMessages(initialChat.conversation_id);
+          const initialMessages = await getChatMessages(initialChat.conversation_id, token);
           if (isCurrent) setMessages(initialMessages);
-          await markChatRead(initialChat.conversation_id);
+          await markChatRead(initialChat.conversation_id, token);
         }
       } catch (loadError) {
         console.error("Failed to load chats.", loadError);
@@ -122,50 +132,37 @@ export function ChatPage() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [isLoaded, isSignedIn, requireToken]);
 
+  // Polling: selected chat ke messages aur chat list har 4 second par refresh
   useEffect(() => {
     if (!selectedChatId || !userId) return;
 
     let isCurrent = true;
-    const channel = supabase
-      .channel(`chat:${selectedChatId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `conversation_id=eq.${selectedChatId}`,
-        },
-        (payload) => {
-          const newMessage = payload.new as ChatMessage;
-          if (!isCurrent) return;
 
-          setMessages((current) =>
-            current.some((entry) => entry.id === newMessage.id)
-              ? current
-              : [...current, newMessage],
-          );
+    async function poll() {
+      try {
+        const token = await requireToken();
+        const [latestMessages] = await Promise.all([
+          getChatMessages(selectedChatId as string, token),
+          getChatConversations(token).then((conversations) => {
+            if (isCurrent) setChatList(conversations);
+          }),
+        ]);
+        if (isCurrent) setMessages(latestMessages);
+        await markChatRead(selectedChatId as string, token);
+      } catch (pollError) {
+        console.error("Failed to refresh chat.", pollError);
+      }
+    }
 
-          void loadConversations().catch((refreshError: unknown) => {
-            console.error("Failed to refresh chat list.", refreshError);
-          });
-
-          if (newMessage.sender_id !== userId) {
-            void markChatRead(selectedChatId).catch((readError: unknown) => {
-              console.error("Failed to mark chat as read.", readError);
-            });
-          }
-        },
-      )
-      .subscribe();
+    const intervalId = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
       isCurrent = false;
-      void supabase.removeChannel(channel);
+      window.clearInterval(intervalId);
     };
-  }, [loadConversations, selectedChatId, userId]);
+  }, [selectedChatId, userId, requireToken]);
 
   const selectedChat = chatList.find((chat) => chat.conversation_id === selectedChatId);
 
@@ -188,7 +185,12 @@ export function ChatPage() {
     setError(null);
 
     try {
-      await Promise.all([loadMessages(chat.conversation_id), markChatRead(chat.conversation_id)]);
+      const token = await requireToken();
+      const [conversationMessages] = await Promise.all([
+        getChatMessages(chat.conversation_id, token),
+        markChatRead(chat.conversation_id, token),
+      ]);
+      setMessages(conversationMessages);
 
       setChatList((current) =>
         current.map((entry) =>
@@ -211,7 +213,8 @@ export function ChatPage() {
     setError(null);
 
     try {
-      await sendChatMessage(selectedChat.conversation_id, text);
+      const token = await requireToken();
+      await sendChatMessage(selectedChat.conversation_id, text, token);
       setMessage("");
       await Promise.all([loadMessages(selectedChat.conversation_id), loadConversations()]);
     } catch (sendError) {
@@ -267,10 +270,7 @@ export function ChatPage() {
                   type="button"
                   onClick={() =>
                     void loadConversations()
-                      .then((items) => {
-                        setChatList(items);
-                        setError(null);
-                      })
+                      .then(() => setError(null))
                       .catch((retryError: unknown) => {
                         setError(
                           retryError instanceof Error
